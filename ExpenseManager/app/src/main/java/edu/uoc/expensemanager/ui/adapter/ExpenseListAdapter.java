@@ -17,17 +17,21 @@ import edu.uoc.expensemanager.R;
 import edu.uoc.expensemanager.model.ExpenseInfo;
 import edu.uoc.expensemanager.model.UserInfo;
 import edu.uoc.expensemanager.ui.ExpenseActivity;
+import edu.uoc.expensemanager.ui.TripViewActivity;
 
 
 public class ExpenseListAdapter extends RecyclerView.Adapter<ExpenseListAdapter.ViewHolder>{
-    private ExpenseInfo[] listdata;
-    private Context activityContext;
+    private ArrayList<ExpenseInfo> listdata;
+    private TripViewActivity activity;
     ArrayList<UserInfo> users;
+    String tripID;
     // RecyclerView recyclerView;
-    public ExpenseListAdapter(ExpenseInfo[] listData, Context context, ArrayList<UserInfo> users) {
+    public ExpenseListAdapter(ArrayList<ExpenseInfo> listData, TripViewActivity activity, ArrayList<UserInfo> users, String tripID) {
         this.listdata = listData;
         this.users = users;
-        this.activityContext = context;
+        this.activity = activity;
+        this.tripID = tripID;
+
     }
     @Override
     public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
@@ -39,24 +43,25 @@ public class ExpenseListAdapter extends RecyclerView.Adapter<ExpenseListAdapter.
 
     @Override
     public void onBindViewHolder(ViewHolder holder, int position) {
-        final ExpenseInfo myListData = listdata[position];
-        holder.textView_Desc.setText(listdata[position].description);
-        holder.textView_Date.setText(listdata[position].date);
-        holder.textView_Amount.setText(""+listdata[position].totalAmount + " €");
-        //holder.imageView.setImageResource(listdata[position].());
+        final ExpenseInfo expenseData = listdata.get(position);
+        holder.textView_Desc.setText(listdata.get(position).description);
+        holder.textView_Date.setText(listdata.get(position).date);
+        holder.textView_Amount.setText(""+listdata.get(position).totalAmount + " €");
+
         holder.relativeLayout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Intent k = new Intent(activityContext, ExpenseActivity.class);
-                k.putExtra("Description",myListData.description);
-                k.putExtra("Date",myListData.date);
-                k.putExtra("Amount",myListData.totalAmount);
+                Intent k = new Intent(activity, ExpenseActivity.class);
+                k.putExtra("Description",expenseData.description);
+                k.putExtra("Date",expenseData.date);
+                k.putExtra("Amount",expenseData.totalAmount);
+                k.putExtra("Payers", expenseData.payers);
                 k.putExtra("Users", users);
-                activityContext.startActivity(k);
+                k.putExtra("TripID", tripID);
+                k.putExtra("ExpenseID", expenseData.expenseID);
 
-                //Toast.makeText(view.getContext(),"click on item: "+myListData.description,Toast.LENGTH_LONG).show();
-                //listdata[holder.getAdapterPosition()].setDescription("KAKAK");
-                //notifyItemChanged(holder.getAdapterPosition());
+
+                activity.mStartForResult.launch(k);
             }
         });
     }
@@ -64,7 +69,7 @@ public class ExpenseListAdapter extends RecyclerView.Adapter<ExpenseListAdapter.
 
     @Override
     public int getItemCount() {
-        return listdata.length;
+        return listdata.size();
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
@@ -75,7 +80,7 @@ public class ExpenseListAdapter extends RecyclerView.Adapter<ExpenseListAdapter.
         public RelativeLayout relativeLayout;
         public ViewHolder(View itemView) {
             super(itemView);
-            this.imageView = (ImageView) itemView.findViewById(R.id.imageView);
+            this.imageView = (ImageView) itemView.findViewById(R.id.userAvatar);
             this.textView_Desc = (TextView) itemView.findViewById(R.id.textView_description);
             this.textView_Date = (TextView) itemView.findViewById(R.id.textView_date);
             this.textView_Amount = (TextView) itemView.findViewById(R.id.textView_amount);

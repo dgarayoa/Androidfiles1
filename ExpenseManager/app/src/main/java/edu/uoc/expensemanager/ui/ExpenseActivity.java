@@ -1,5 +1,6 @@
 package edu.uoc.expensemanager.ui;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -7,12 +8,15 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -22,9 +26,17 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.FirebaseFirestore;
+
 import org.w3c.dom.Text;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import edu.uoc.expensemanager.R;
 import edu.uoc.expensemanager.model.PayerInfo;
@@ -44,9 +56,12 @@ public class ExpenseActivity extends AppCompatActivity  {
     Spinner payer_spinner;
     Integer totalAmount;
     ProgressBar progressBar;
-
+    String expenseID;
+    String tripID;
     int spinnerCurrentIndexSelected = 0;
+    boolean editionMode;
 
+    boolean changeSomething = false;
 
     //To debug
     boolean savedCorrectly = false;
@@ -55,7 +70,8 @@ public class ExpenseActivity extends AppCompatActivity  {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_expense);
-
+        editionMode = false;
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
         txt_amount = findViewById(R.id.txtf_amount);
         txt_date = findViewById(R.id.txtf_date);;
         txt_description = findViewById(R.id.txtf_description);
@@ -110,18 +126,30 @@ public class ExpenseActivity extends AppCompatActivity  {
                             .setIcon(android.R.drawable.ic_dialog_alert)
                             .show();
                 }else{
-                    progressBar.setVisibility(View.VISIBLE);
-                    btnSave.setEnabled(false);
-                    DoConnection();
+                    if (editionMode){
+                        UpdateExpenseOnFirebase();
+                    }else{
+                        CreateNewExpenseOnFirebase();
+                    }
+
                 }
             }
         });
         Bundle extras = getIntent().getExtras();
         if (extras != null) {
             String description = extras.getString("Description");
+            if (description != null && description.compareTo("")!= 0){
+                editionMode = true;
+            }
+            if (editionMode){
+                btnSave.setText("Update");
+                payers = extras.getParcelableArrayList("Payers");
+                expenseID = extras.getString("ExpenseID");
+
+            }
             String date = extras.getString("Date");
             totalAmount = extras.getInt("Amount");
-
+            tripID = extras.getString("TripID");
             txt_description.setText(description);
             txt_date.setText(date);
             txt_amount.setText("" + totalAmount);
@@ -163,7 +191,7 @@ public class ExpenseActivity extends AppCompatActivity  {
                     if (payers.size() == 0){
                         amount = totalAmount;
                     }
-                    PayerInfo newPayer = new PayerInfo("",user.name,"",amount);
+                    PayerInfo newPayer = new PayerInfo(user.url_avatar,user.name,user.email,amount);
                     payers.add(newPayer);
                     if (payers.size() == 1) {
                         adapter.notifyItemChanged(payers.size()-1);
@@ -190,14 +218,6 @@ public class ExpenseActivity extends AppCompatActivity  {
 
             }
         });
-
-
-
-
-        String path1 = "https://m.media-amazon.com/images/M/MV5BNzUxNjM4ODI1OV5BMl5BanBnXkFtZTgwNTEwNDE2OTE@._V1_SX150_CR0,0,150,150_.jpg";
-        String path2 = "https://m.media-amazon.com/images/M/MV5BMTUyMDU1MTU2N15BMl5BanBnXkFtZTgwODkyNzQ3MDE@._V1_SX150_CR0,0,150,150_.jpg";
-        String path3 = "https://m.media-amazon.com/images/M/MV5BMTk1MjM5NDg4MF5BMl5BanBnXkFtZTcwNDg1OTQ4Nw@@._V1_SX150_CR0,0,150,150_.jpg";
-        String path4 = "https://m.media-amazon.com/images/M/MV5BMjExNjY5NDY0MV5BMl5BanBnXkFtZTgwNjQ1Mjg1MTI@._V1_SX150_CR0,0,150,150_.jpg";
 
 
         RecyclerView recyclerView = findViewById(R.id.payer_list);
@@ -236,24 +256,107 @@ public class ExpenseActivity extends AppCompatActivity  {
 
         }
     }
+    public void ConnectionFinished(){
+        progressBar.setVisibility(View.INVISIBLE);
+        btnSave.setEnabled(true);
+    }
 
-    public void DoConnection(){
-        //TODO.. send data to firebase and activate activity indicator while
-        // waiting server response
-        final Handler handler = new Handler(Looper.getMainLooper());
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                progressBar.setVisibility(View.INVISIBLE);
-                btnSave.setEnabled(true);
-                if (savedCorrectly){
-                    Toast.makeText(ExpenseActivity.this,"Expense saved successfully",Toast.LENGTH_LONG).show();
-                }else{
-                    Toast.makeText(ExpenseActivity.this,"Error trying to save the Expense",Toast.LENGTH_LONG).show();
-                    savedCorrectly = true;
-                }
-            }
-        }, 1500); //1'5 seconds
+    public void UpdateExpenseOnFirebase(){
+        Map<String, Object> expense = new HashMap<>();
+        expense.put("tripID",tripID );
+        expense.put("amount",txt_amount.getText().toString() );
+        expense.put("date",txt_date.getText().toString() );
+        expense.put("description",txt_description.getText().toString() );
 
+        List payers_ = new ArrayList();
+        for (PayerInfo payer :payers)
+        {
+            payers_.add(payer);
+        }
+        expense.put("payers", payers_);
+
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        DocumentReference expenseRef = db.collection("expenses").document(expenseID);
+        // Add a new document with a generated ID
+        expenseRef
+                .update(expense)
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        ExpenseSavedSuccessfully();
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        ShowErrorStatus(e.toString());
+                    }
+                });
+    }
+    public void CreateNewExpenseOnFirebase(){
+        progressBar.setVisibility(View.VISIBLE);
+        btnSave.setEnabled(false);
+        // Create a new user with a first and last name
+        Map<String, Object> expense = new HashMap<>();
+        expense.put("tripID",tripID );
+        expense.put("amount",txt_amount.getText().toString() );
+        expense.put("date",txt_date.getText().toString() );
+        expense.put("description",txt_description.getText().toString() );
+
+        List payers_ = new ArrayList();
+        for (PayerInfo payer :payers)
+        {
+            payers_.add(payer);
+        }
+        expense.put("payers", payers_);
+
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        // Add a new document with a generated ID
+        db.collection("expenses")
+                .add(expense)
+                .addOnSuccessListener(new OnSuccessListener<DocumentReference>() {
+                    @Override
+                    public void onSuccess(DocumentReference documentReference) {
+                        String doc_id = documentReference.getId();
+                        Log.d("TripEditActivity", "DocumentSnapshot added with ID: " + doc_id);
+                        ExpenseSavedSuccessfully();
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        String error = e.toString();
+                        ShowErrorStatus(error);
+                    }
+                });
+    }
+
+    public void ShowErrorStatus(String msg){
+        lbl_warning.setVisibility(View.VISIBLE);
+        lbl_warning.setTextColor(Color.RED);
+        lbl_warning.setText(msg);
+        ConnectionFinished();
+    }
+
+    public void ExpenseSavedSuccessfully(){
+        changeSomething = true;
+        lbl_warning.setVisibility(View.VISIBLE);
+        lbl_warning.setTextColor(Color.GREEN);
+        if (editionMode){
+            lbl_warning.setText("Expense Updated successfully");
+        }else{
+            lbl_warning.setText("Expense Saved successfully");
+        }
+
+        ConnectionFinished();
+    }
+
+    public void onBackPressed() {
+        if (changeSomething){
+            Intent data = getIntent();
+            setResult(100, data);
+        }
+
+        finish();
     }
 }
