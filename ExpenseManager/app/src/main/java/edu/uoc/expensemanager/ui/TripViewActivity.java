@@ -37,6 +37,8 @@ import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.firestore.QuerySnapshot;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
@@ -69,7 +71,7 @@ public class TripViewActivity extends AppCompatActivity {
     Button btn_add_new_user;
     ImageButton btn_delete_trip;
     ExpenseListAdapter expense_adapter;
-
+    int numExpenses;
     public ActivityResultLauncher<Intent> mStartForResult = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             new ActivityResultCallback<ActivityResult>() {
@@ -150,6 +152,9 @@ public class TripViewActivity extends AppCompatActivity {
         btnResume.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 Intent k = new Intent(TripViewActivity.this, ResumeActivity.class);
+                k.putExtra("expenses",myListData);
+                k.putExtra("users",users);
+
                 startActivity(k);
             }
         });
@@ -361,8 +366,79 @@ public class TripViewActivity extends AppCompatActivity {
                 .addOnSuccessListener(new OnSuccessListener<Void>() {
                     @Override
                     public void onSuccess(Void aVoid) {
-                        Toast.makeText(TripViewActivity.this,"Trip "+ tripInfo.description+" deleted",Toast.LENGTH_LONG).show();
-                        finish();
+                        DeleteImageFromFirebase();
+
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+
+                        Toast.makeText(TripViewActivity.this,"Error trying to delete trip. Retry",Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+    public void DeleteExpensesOfTripFromFirebase() {
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        CollectionReference usersRef = db.collection("expenses");
+
+        usersRef.whereEqualTo("tripID", tripInfo.tripID)
+                .get()
+                .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
+                    @Override
+                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
+                        if (task.isSuccessful()) {
+                            numExpenses = task.getResult().size();
+                            if (numExpenses == 0){
+                                Toast.makeText(TripViewActivity.this,"Trip deleted successfully",Toast.LENGTH_LONG).show();
+                                finish();
+                            }else{
+                                for (QueryDocumentSnapshot document : task.getResult()) {
+                                    RemoveExpense(document.getId());
+                                }
+                            }
+
+                        }
+                    }
+                });
+    }
+
+    public void DeleteImageFromFirebase(){
+
+        FirebaseStorage storage = FirebaseStorage.getInstance();
+        StorageReference storageRef = storage.getReference();
+        StorageReference imgRef = storageRef.child("images/trips/"+tripInfo.tripID+".jpg");
+
+
+        // Delete the file
+        imgRef.delete().addOnSuccessListener(new OnSuccessListener<Void>() {
+            @Override
+            public void onSuccess(Void aVoid) {
+                // File deleted successfully
+                DeleteExpensesOfTripFromFirebase();
+            }
+        }).addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception exception) {
+                // Uh-oh, an error occurred!
+                Toast.makeText(TripViewActivity.this,"Error deleting image from trip",Toast.LENGTH_LONG).show();
+                DeleteExpensesOfTripFromFirebase();
+            }
+        });
+    }
+
+    public void RemoveExpense(String expenseID){
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        db.collection("expenses").document(expenseID)
+                .delete()
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        numExpenses--;
+                        if (numExpenses == 0){
+                            Toast.makeText(TripViewActivity.this,"Trip deleted successfully",Toast.LENGTH_LONG).show();
+                            finish();
+                        }
                     }
                 })
                 .addOnFailureListener(new OnFailureListener() {
